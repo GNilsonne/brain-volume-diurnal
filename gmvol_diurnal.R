@@ -7,6 +7,7 @@
 # Require packages
 require(nlme)
 require(effects)
+library(vioplot) # To make violin plots
 
 # Read files
 # These files are metadata files from NITRC
@@ -136,34 +137,40 @@ lm_sim_lin <- lme(gm_sim ~ minutesfromseven, data = data_unbalanced, random = ~ 
 summary(lm_sim_lin)
 plot(lm_sim_lin)
 plot(effect("minutesfromseven", lm_sim_lin), main = "Predicted, linear model", xlab = "minutes from 07:00", ylab = "gray matter fraction")
-lm_sim_exp <- lme(gm_sim ~ log(1 + minutesfromseven), data = data_unbalanced, random = ~ log(1 + minutesfromseven)|dataset/SUBID, control = lmeControl(opt = 'optim'))
-summary(lm_sim_exp)
-plot(lm_sim_exp)
-plot(effect("log(1 + minutesfromseven)", lm_sim_exp), main = "Predicted, exponential model", xlab = "minutes from 07:00", ylab = "gray matter fraction")
+lm_sim_log <- lme(gm_sim ~ log(1 + minutesfromseven), data = data_unbalanced, random = ~ log(1 + minutesfromseven)|dataset/SUBID, control = lmeControl(opt = 'optim'))
+summary(lm_sim_log)
+plot(lm_sim_log)
+plot(effect("log(1 + minutesfromseven)", lm_sim_log), main = "Predicted, log-linear model", xlab = "minutes from 07:00", ylab = "gray matter fraction")
 rm(.Random.seed, envir=globalenv()) # Reset random seed
 
-x_min <- min(data_unbalanced$tod)
-x_max <- max(data_unbalanced$tod)
+x_min <- min(data_unbalanced$minutesfromseven)
+x_max <- max(data_unbalanced$minutesfromseven)
 y_min <- min(data_unbalanced$gm_sim)
 y_max <- max(data_unbalanced$gm_sim)
+
+newdat <- expand.grid(dataset = unique(data_unbalanced$dataset), minutesfromseven = c(1:1000))
+pred <- predict(lm_sim_log, newdat, level = 1)
 for(i in 1:length(unique(data_unbalanced$dataset))){
-  plot(gm_sim ~ tod, data = data_unbalanced[data_unbalanced$dataset == unique(data_unbalanced$dataset)[i], ], frame.plot = F, xlab = "time of day", ylab = "gray matter fraction", main = unique(data_unbalanced$dataset)[i], xlim = c(x_min, x_max), ylim = c(y_min, y_max))
-  abline(a = lm_sim$coefficients$fixed[1] + lm_sim$coefficients$random$dataset[i, 1], b = lm_sim$coefficients$fixed[2] + lm_sim$coefficients$random$dataset[i, 2])
+  png(paste("pred_", unique(data_unbalanced$dataset)[i], ".jpg", sep = ""), width = 400, height = 400, units = "px")
+  plot(gm_sim ~ minutesfromseven, data = data_unbalanced[data_unbalanced$dataset == unique(data_unbalanced$dataset)[i], ], frame.plot = F, xlab = "minutes from 07:00", ylab = "gray matter fraction", main = unique(data_unbalanced$dataset)[i], xlim = c(x_min, x_max), ylim = c(y_min, y_max), pch = "+")
+  abline(a = lm_sim_lin$coefficients$fixed[1] + lm_sim_lin$coefficients$random$dataset[i, 1], b = lm_sim_lin$coefficients$fixed[2] + lm_sim_lin$coefficients$random$dataset[i, 2], col = "red")
+  lines(pred[seq(from = i, to = 15000, by = 15)] ~ c(1:1000), col = "blue")
+  dev.off()
 }
 
 
 # Test models on simulated data
-n_iterations <- 10
+n_iterations <- 2000
 sim_results <- data.frame(matrix(nrow = n_iterations, ncol = 15)) # Initialise data frame
 names(sim_results) <- c("iteration", "lower_lin", "est_lin", "upper_lin", "p_lin", 
-                        "logLik_lin", "AIC_lin", "lower_exp", "est_exp", "upper_exp", 
-                        "p_exp", "logLik_exp", "AIC_exp", "p_exp", "p_lin_vs_exp")
+                        "logLik_lin", "AIC_lin", "lower_log", "est_log", "upper_log", 
+                        "p_log", "logLik_log", "AIC_log", "p_log", "p_lin_vs_log")
 pb <- winProgressBar(title = "progress bar", min = 0, max = n_iterations, width = 300)
 for(i in 1:n_iterations){
   data_unbalanced$gm_sim <- rnorm(mean = mean(ds000030$icvs_gm), sd = sd(ds000030$icvs_gm), n = length(data_unbalanced$SUBID))
-  lm_lin <- tryCatch(lme(gm_sim ~ minutesfromseven, data = data_unbalanced, random = ~ minutesfromseven|dataset/SUBID, control = lmeControl(opt = 'optim')), error = function(e) NA)
-  lm_exp <- tryCatch(lme(gm_sim ~ log(1 + minutesfromseven), data = data_unbalanced, random = ~ log(1 + minutesfromseven)|dataset/SUBID, control = lmeControl(opt = 'optim')), error = function(e) NA)
-  if(length(lm_lin) == 18 & length(lm_exp) == 18){
+  lm_lin <- tryCatch(lme(gm_sim ~ minutesfromseven, data = data_unbalanced, random = ~ minutesfromseven|dataset/SUBID, control = lmeControl(opt = 'optim', maxIter = 200)), error = function(e) NA)
+  lm_log <- tryCatch(lme(gm_sim ~ log(1 + minutesfromseven), data = data_unbalanced, random = ~ log(1 + minutesfromseven)|dataset/SUBID, control = lmeControl(opt = 'optim', maxIter = 200)), error = function(e) NA)
+  if(length(lm_lin) == 18 & length(lm_log) == 18){
     out <- data.frame(iteration = i, 
                       lower_lin <- intervals(lm_lin, which = "fixed")$fixed[2, 1],
                       est_lin <- intervals(lm_lin, which = "fixed")$fixed[2, 2],
@@ -171,14 +178,14 @@ for(i in 1:n_iterations){
                       p_lin = summary(lm_lin)$tTable[2, 5], 
                       logLik_lin = logLik(lm_lin, REML = F),
                       AIC_lin = AIC(lm_lin),
-                      lower_exp <- intervals(lm_exp, which = "fixed")$fixed[2, 1],
-                      est_exp <- intervals(lm_exp, which = "fixed")$fixed[2, 2],
-                      upper_exp <- intervals(lm_exp, which = "fixed")$fixed[2, 3],
-                      p_exp = summary(lm_exp)$tTable[2, 5], 
-                      logLik_exp = logLik(lm_exp, REML = F),
-                      AIC_exp = AIC(lm_exp),
-                      p_exp = summary(lm_exp)$tTable[2, 5],
-                      p_lin_vs_exp = 1 - pchisq(abs(logLik(lm_lin, REML = F)[1] - logLik(lm_exp, REML = F)[1])*2, 2))
+                      lower_log <- intervals(lm_log, which = "fixed")$fixed[2, 1],
+                      est_log <- intervals(lm_log, which = "fixed")$fixed[2, 2],
+                      upper_log <- intervals(lm_log, which = "fixed")$fixed[2, 3],
+                      p_log = summary(lm_log)$tTable[2, 5], 
+                      logLik_log = logLik(lm_log, REML = F),
+                      AIC_log = AIC(lm_log),
+                      p_log = summary(lm_log)$tTable[2, 5],
+                      p_lin_vs_log = 1 - pchisq(abs(logLik(lm_lin, REML = F)[1] - logLik(lm_log, REML = F)[1])*2, 2))
   } else if(length(lm_lin) == 18){
     out <- data.frame(iteration = i, 
                       lower_lin <- intervals(lm_lin, which = "fixed")$fixed[2, 1],
@@ -187,14 +194,14 @@ for(i in 1:n_iterations){
                       p_lin = summary(lm_lin)$tTable[2, 5], 
                       logLik_lin = logLik(lm_lin, REML = F),
                       AIC_lin = AIC(lm_lin),
-                      lower_exp <- NA,
-                      est_exp <- NA,
-                      upper_exp <- NA,
-                      p_exp = NA, 
-                      logLik_exp = NA,
-                      AIC_exp = NA,
-                      p_exp = NA,
-                      p_lin_vs_exp = NA)
+                      lower_log <- NA,
+                      est_log <- NA,
+                      upper_log <- NA,
+                      p_log = NA, 
+                      logLik_log = NA,
+                      AIC_log = NA,
+                      p_log = NA,
+                      p_lin_vs_log = NA)
   } else {
     out <- data.frame(iteration = i, 
                       lower_lin <- NA,
@@ -203,26 +210,45 @@ for(i in 1:n_iterations){
                       p_lin = NA, 
                       logLik_lin = NA,
                       AIC_lin = NA,
-                      lower_exp <- intervals(lm_exp, which = "fixed")$fixed[2, 1],
-                      est_exp <- intervals(lm_exp, which = "fixed")$fixed[2, 2],
-                      upper_exp <- intervals(lm_exp, which = "fixed")$fixed[2, 3],
-                      p_exp = summary(lm_exp)$tTable[2, 5], 
-                      logLik_exp = logLik(lm_exp, REML = F),
-                      AIC_exp = AIC(lm_exp),
-                      p_exp = summary(lm_exp)$tTable[2, 5],
-                      p_lin_vs_exp = 1 - pchisq(abs(logLik(lm_lin, REML = F)[1] - logLik(lm_exp, REML = F)[1])*2, 2))
+                      lower_log <- intervals(lm_log, which = "fixed")$fixed[2, 1],
+                      est_log <- intervals(lm_log, which = "fixed")$fixed[2, 2],
+                      upper_log <- intervals(lm_log, which = "fixed")$fixed[2, 3],
+                      p_log = summary(lm_log)$tTable[2, 5], 
+                      logLik_log = logLik(lm_log, REML = F),
+                      AIC_log = AIC(lm_log),
+                      p_log = summary(lm_log)$tTable[2, 5],
+                      p_lin_vs_log = NA)
   }
   sim_results[i, ] <- out
   setWinProgressBar(pb, i, title=paste( round(i/n_iterations*100, 0), "% done"))
 }
 close(pb)
 
-hist(sim_results$p_lin, breaks = 19, main = "Linear model: p-values for time of day")
-hist(sim_results$p_exp, breaks = 19, main = "Exponential model: p-values for time of day")
+summary(sim_results$est_lin)
+summary(sim_results$est_log)
 
-d <- density(sim_results$logLik_lin)
+sim_results$lin_ci_width <- sim_results$upper_lin - sim_results$lower_lin
+sim_results$log_ci_width <- sim_results$upper_log - sim_results$lower_log
+vioplot(sim_results$lin_ci_width[!is.na(sim_results$lin_ci_width)]*60*12, col = "gray", names = "")
+title(main = "Linear model", ylab = "Confidence interval width x 720")
+vioplot(sim_results$log_ci_width[!is.na(sim_results$log_ci_width)]*60*12, col = "gray", names = "")
+title(main = "Log-linear model", ylab = "Confidence interval width x 720")
+
+hist(sim_results$p_lin, breaks = 19, main = "Linear model: p-values for time of day", col = c("gray", rep("white", 19)), xlab = "p")
+hist(sim_results$p_log, breaks = 19, main = "Log-linear model: p-values for time of day", col = c("gray", rep("white", 19)), xlab = "p")
+
+d <- density(sim_results$logLik_lin, na.rm = T)
 plot(d, main = "Log likelihood", frame.plot = F, type = "n")
 polygon(d, col="gray", border="gray")
-lines(density(sim_results$logLik_exp), lwd = 2)
+lines(density(sim_results$logLik_log, na.rm = T), lwd = 1)
 
-hist(sim_results$p_lin_vs_exp, breaks = 19, main = "Model comparison: p-valused for LogLik-test")
+hist(sim_results$p_lin_vs_log, breaks = 19, main = "Model comparison: p-values for LogLik-test", col = c("gray", rep("white", 19)), xlab = "p")
+length(sim_results$p_lin_vs_log[sim_results$p_lin_vs_log < 0.05 & !is.na(sim_results$p_lin_vs_log)])/length(sim_results$p_lin_vs_log[!is.na(sim_results$p_lin_vs_log)])
+
+sim_results$delta_logLik <- sim_results$logLik_lin - sim_results$logLik_log
+summary(sim_results$delta_logLik)
+
+vioplot(sim_results$logLik_lin[!is.na(sim_results$logLik_lin)], sim_results$logLik_log[!is.na(sim_results$logLik_log)], col = "gray", names = c("linear", "log-linear"))
+title(ylab = "Log likelihood")
+vioplot(sim_results$delta_logLik[!is.na(sim_results$delta_logLik)], col = "gray", names = "linear minus log-linear")
+title(ylab = "Delta log likelihood")
