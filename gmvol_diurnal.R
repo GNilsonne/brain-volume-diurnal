@@ -240,9 +240,13 @@ for(i in 1:n_iterations){
 }
 close(pb)
 
+# Analyse simulated data
+
+# Find out how many convergence faliures there were (NA values)
 summary(sim_results$est_lin)
 summary(sim_results$est_log)
 
+# Plot the confidence interval widths
 sim_results$lin_ci_width <- sim_results$upper_lin - sim_results$lower_lin
 sim_results$log_ci_width <- sim_results$upper_log - sim_results$lower_log
 vioplot(sim_results$lin_ci_width[!is.na(sim_results$lin_ci_width)]*60*12, col = "gray", names = "")
@@ -250,21 +254,26 @@ title(main = "Linear model", ylab = "Confidence interval width x 720")
 vioplot(sim_results$log_ci_width[!is.na(sim_results$log_ci_width)]*60*12, col = "gray", names = "")
 title(main = "Log-linear model", ylab = "Confidence interval width x 720")
 
+# Plot p-value distributions for linear and log-linear models
 hist(sim_results$p_lin, breaks = 19, main = "Linear model: p-values for time of day", col = c("gray", rep("white", 19)), xlab = "p")
 hist(sim_results$p_log, breaks = 19, main = "Log-linear model: p-values for time of day", col = c("gray", rep("white", 19)), xlab = "p")
+
+# Plot log likelihoods
+sim_results$delta_logLik <- sim_results$logLik_lin - sim_results$logLik_log
+summary(sim_results$delta_logLik)
+vioplot(sim_results$logLik_lin[!is.na(sim_results$logLik_lin)], sim_results$logLik_log[!is.na(sim_results$logLik_log)], col = "gray", names = c("linear", "log-linear"))
+title(ylab = "Log likelihood")
+vioplot(sim_results$delta_logLik[!is.na(sim_results$delta_logLik)], col = "gray", names = "linear minus log-linear")
+title(ylab = "Delta log likelihood")
 
 d <- density(sim_results$logLik_lin, na.rm = T)
 plot(d, main = "Log likelihood", frame.plot = F, type = "n")
 polygon(d, col="gray", border="gray")
 lines(density(sim_results$logLik_log, na.rm = T), lwd = 1)
 
+# Plot p-value distribution for log likelihood test between models
 hist(sim_results$p_lin_vs_log, breaks = 19, main = "Model comparison: p-values for LogLik-test", col = c("gray", rep("white", 19)), xlab = "p")
 length(sim_results$p_lin_vs_log[sim_results$p_lin_vs_log < 0.05 & !is.na(sim_results$p_lin_vs_log)])/length(sim_results$p_lin_vs_log[!is.na(sim_results$p_lin_vs_log)])
 
-sim_results$delta_logLik <- sim_results$logLik_lin - sim_results$logLik_log
-summary(sim_results$delta_logLik)
-
-vioplot(sim_results$logLik_lin[!is.na(sim_results$logLik_lin)], sim_results$logLik_log[!is.na(sim_results$logLik_log)], col = "gray", names = c("linear", "log-linear"))
-title(ylab = "Log likelihood")
-vioplot(sim_results$delta_logLik[!is.na(sim_results$delta_logLik)], col = "gray", names = "linear minus log-linear")
-title(ylab = "Delta log likelihood")
+# Write simulation results
+write.csv(sim_results, file = "simulation_results_170712.csv")
