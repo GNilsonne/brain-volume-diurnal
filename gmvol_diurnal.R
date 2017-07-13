@@ -160,7 +160,7 @@ for(i in 1:length(unique(data_unbalanced$dataset))){
 
 
 # Test models on simulated data
-n_iterations <- 2000
+n_iterations <- 10000
 sim_results <- data.frame(matrix(nrow = n_iterations, ncol = 15)) # Initialise data frame
 names(sim_results) <- c("iteration", "lower_lin", "est_lin", "upper_lin", "p_lin", 
                         "logLik_lin", "AIC_lin", "lower_log", "est_log", "upper_log", 
@@ -202,7 +202,7 @@ for(i in 1:n_iterations){
                       AIC_log = NA,
                       p_log = NA,
                       p_lin_vs_log = NA)
-  } else {
+  } else if(length(lm_log) == 18){
     out <- data.frame(iteration = i, 
                       lower_lin <- NA,
                       est_lin <- NA,
@@ -217,6 +217,22 @@ for(i in 1:n_iterations){
                       logLik_log = logLik(lm_log, REML = F),
                       AIC_log = AIC(lm_log),
                       p_log = summary(lm_log)$tTable[2, 5],
+                      p_lin_vs_log = NA)
+  } else {
+    out <- data.frame(iteration = i, 
+                      lower_lin <- NA,
+                      est_lin <- NA,
+                      upper_lin <- NA,
+                      p_lin = NA, 
+                      logLik_lin = NA,
+                      AIC_lin = NA,
+                      lower_log <- NA,
+                      est_log <- NA,
+                      upper_log <- NA,
+                      p_log = NA, 
+                      logLik_log = NA,
+                      AIC_log = NA,
+                      p_log = NA,
                       p_lin_vs_log = NA)
   }
   sim_results[i, ] <- out
